@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebSend</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen p-4 md:p-6">
+<div class="max-w-6xl mx-auto space-y-5">
+
+  <!-- ヘッダー -->
+  <header class="bg-white border border-slate-300 rounded-2xl px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold">WebSend</h1>
+      <p class="text-sm text-slate-500">LAN内P2Pファイル・テキスト共有ボード ── サーバーには何も残しません</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="own-url" class="text-sm font-bold text-indigo-600"></span>
+      <span id="ws-status" class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-500">
+        <span class="w-2 h-2 rounded-full bg-slate-400"></span>未接続
+      </span>
+    </div>
+  </header>
+
+  <!-- ルーム参加パネル -->
+  <section class="bg-white border border-slate-300 rounded-2xl px-6 py-4">
+    <h2 class="text-sm font-bold">ルーム</h2>
+    <p class="text-xs text-slate-500 mb-3">同じルームコードを入力した端末同士が一覧に表示されます</p>
+    <div class="flex flex-col sm:flex-row gap-3">
+      <label class="flex-1">
+        <span class="block text-xs font-bold text-slate-500 mb-1">あなたの名前</span>
+        <input id="name-input" type="text" maxlength="64"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50">
+      </label>
+      <label class="flex-1">
+        <span class="block text-xs font-bold text-slate-500 mb-1">ルームコード</span>
+        <input id="room-input" type="text" maxlength="32" placeholder="例: HACK-2026"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50">
+      </label>
+      <div class="flex items-end">
+        <button id="join-btn"
+                class="bg-indigo-600 text-white font-bold text-sm rounded-lg px-5 py-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          ルームに参加
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
+
+    <!-- 同じルームの端末一覧 -->
+    <section class="bg-white border border-slate-300 rounded-2xl px-5 py-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold">同じルームの端末</h2>
+        <span id="peer-count" class="text-xs font-bold text-indigo-600 bg-indigo-100 rounded-full px-2.5 py-1">0</span>
+      </div>
+      <ul id="peer-list" class="space-y-2"></ul>
+      <p id="peer-empty" class="text-xs text-slate-400 text-center py-6">ルームに参加すると、ここに他の端末が表示されます</p>
+      <p class="text-xs text-slate-400 mt-3">※ ルームに入るだけでは接続されません。個別に「接続」を押してP2P接続を開始します</p>
+    </section>
+
+    <!-- 共有パネル -->
+    <section class="bg-white border border-slate-300 rounded-2xl px-5 py-4">
+      <h2 class="text-sm font-bold mb-1">共有する（接続済みの端末全員に送信）</h2>
+      <p id="share-hint" class="text-xs text-amber-600 mb-3">接続済みの端末がありません。まず端末一覧から「接続」してください</p>
+
+      <div id="share-body" class="space-y-4">
+        <div>
+          <span class="block text-xs font-bold text-slate-500 mb-2">テキスト</span>
+          <div class="flex gap-3">
+            <textarea id="text-input" rows="3" placeholder="URLやメモをここに貼り付け…"
+                      class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50"></textarea>
+            <button id="text-send-btn"
+                    class="bg-indigo-600 text-white font-bold text-sm rounded-lg px-6">送信</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="block text-xs font-bold text-slate-500 mb-2">ファイル</span>
+          <div id="dropzone"
+               class="border-2 border-indigo-600 bg-indigo-100 rounded-lg py-8 text-center text-indigo-600 text-sm font-bold cursor-pointer">
+            ここにファイルをドラッグ＆ドロップ
+            <div class="font-normal text-xs mt-1">またはクリックして選択（複数選択可）</div>
+          </div>
+          <input id="file-input" type="file" multiple class="hidden">
+        </div>
+
+        <div id="transfer-list" class="space-y-3"></div>
+
+        <div>
+          <span class="block text-xs font-bold text-slate-500 mb-2">テキストのやり取り</span>
+          <div id="received-text-list" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 送受信ログ -->
+  <section class="bg-slate-900 text-slate-200 rounded-2xl px-5 py-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-sm font-bold">送受信ログ</h2>
+      <button id="log-dump-btn" class="text-xs font-bold border border-slate-600 text-slate-300 rounded-lg px-3 py-1">
+        全文をテキスト表示（コピー用）
+      </button>
+    </div>
+    <div id="log" class="space-y-1 text-xs font-mono max-h-64 overflow-y-auto"></div>
+    <textarea id="log-text" readonly hidden
+              class="w-full mt-2 text-xs font-mono bg-slate-800 text-slate-200 border border-slate-700 rounded p-2"
+              rows="10"></textarea>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  const nameInput = document.getElementById('name-input');
+  const roomInput = document.getElementById('room-input');
+  const joinBtn = document.getElementById('join-btn');
+  const wsStatusEl = document.getElementById('ws-status');
+  const peerListEl = document.getElementById('peer-list');
+  const peerCountEl = document.getElementById('peer-count');
+  const peerEmptyEl = document.getElementById('peer-empty');
+  const logEl = document.getElementById('log');
+  const shareHintEl = document.getElementById('share-hint');
+  const shareBodyEl = document.getElementById('share-body');
+  const textInput = document.getElementById('text-input');
+  const textSendBtn = document.getElementById('text-send-btn');
+  const dropzoneEl = document.getElementById('dropzone');
+  const fileInputEl = document.getElementById('file-input');
+  const transferListEl = document.getElementById('transfer-list');
+  const receivedTextListEl = document.getElementById('received-text-list');
+
+  const MAX_LOG = 200;
+  let ws = null;
+  let joined = false;
+  let selfId = null;
+  const peers = new Map(); // id -> name
+  const peerStatus = new Map(); // id -> 'idle' | 'connecting' | 'connected' | 'failed'
+  const connections = new Map(); // id -> { pc, dc, pendingCandidates: [] }
+  const receivingFiles = new Map(); // peerId -> { fileId, name, size, mime, chunks, received, rowId }
+  const transferRows = new Map(); // rowId -> { rowEl, barEl, labelEl }
+
+  // このサーバー自身が同居させているLAN内完結のSTUNサーバーを使う（インターネットには出ない）。
+  // ChromeなどはWebRTCのhost candidateをmDNS匿名ホスト名にしてしまい、
+  // それを解決できないブラウザ（Haiku OS WebPositive等）からは接続できないため、
+  // STUNで「観測された実IPアドレス」のcandidate(srflx)も出させて疎通できるようにする。
+  const RTC_CONFIG = { iceServers: [{ urls: 'stun:' + window.location.hostname + ':3478' }] };
+
+  const CHUNK_SIZE = 16 * 1024; // DataChannelの安全なメッセージサイズの目安
+  const BUFFERED_AMOUNT_HIGH = 8 * 1024 * 1024; // これを超えたら送信を一時停止して詰まりを防ぐ
+
+  document.getElementById('own-url').textContent = window.location.origin;
+
+  function defaultName() {
+    const isMobile = /Mobi|Android|iPhone/.test(navigator.userAgent);
+    return (isMobile ? 'スマホ' : 'PC') + '-' + Math.random().toString(36).slice(2, 6);
+  }
+
+  nameInput.value = localStorage.getItem('websend_name') || defaultName();
+  roomInput.value = localStorage.getItem('websend_room') || '';
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function truncate(s, n) {
+    return s.length > n ? s.slice(0, n) + '…' : s;
+  }
+
+  function genId() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+  }
+
+  function connectedPeerIds() {
+    return Array.from(peerStatus.entries()).filter(([, s]) => s === 'connected').map(([id]) => id);
+  }
+
+  function updateShareAvailability() {
+    const hasConnected = connectedPeerIds().length > 0;
+    shareHintEl.classList.toggle('hidden', hasConnected);
+    shareBodyEl.classList.toggle('opacity-40', !hasConnected);
+    shareBodyEl.classList.toggle('pointer-events-none', !hasConnected);
+  }
+
+  const logLines = []; // コピー用にプレーンテキストでも保持しておく
+
+  function log(category, message) {
+    const time = new Date().toLocaleTimeString('ja-JP', { hour12: false });
+    const colors = {
+      SIGNALING: 'text-blue-400',
+      P2P: 'text-green-400',
+      TEXT: 'text-yellow-400',
+      FILE: 'text-purple-400',
+    };
+    const row = document.createElement('div');
+    row.innerHTML =
+      '<span class="text-slate-500">' + time + '</span> ' +
+      '<span class="font-bold ' + (colors[category] || 'text-slate-300') + '">[' + category + ']</span> ' +
+      '<span>' + escapeHtml(message) + '</span>';
+    logEl.appendChild(row);
+    while (logEl.children.length > MAX_LOG) {
+      logEl.removeChild(logEl.firstChild);
+    }
+    logEl.scrollTop = logEl.scrollHeight;
+
+    logLines.push(time + ' [' + category + '] ' + message);
+    while (logLines.length > MAX_LOG) logLines.shift();
+  }
+
+  function setWsStatus(state) {
+    const map = {
+      connected: ['接続中', 'bg-emerald-100 text-emerald-600', 'bg-emerald-500'],
+      connecting: ['接続試行中…', 'bg-amber-100 text-amber-600', 'bg-amber-500'],
+      disconnected: ['未接続', 'bg-slate-200 text-slate-500', 'bg-slate-400'],
+    };
+    const [label, cls, dot] = map[state];
+    wsStatusEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ' + cls;
+    wsStatusEl.innerHTML = '<span class="w-2 h-2 rounded-full ' + dot + '"></span>' + label;
+  }
+
+  const STATUS_PILL = {
+    idle: ['未接続', 'bg-slate-200 text-slate-500'],
+    connecting: ['接続中…', 'bg-amber-100 text-amber-600'],
+    connected: ['接続済み', 'bg-emerald-100 text-emerald-600'],
+    failed: ['接続失敗', 'bg-red-100 text-red-600'],
+  };
+
+  function renderPeers() {
+    peerCountEl.textContent = String(peers.size);
+    peerListEl.innerHTML = '';
+    peerEmptyEl.classList.toggle('hidden', peers.size > 0);
+    for (const [id, name] of peers) {
+      const status = peerStatus.get(id) || 'idle';
+      const [label, cls] = STATUS_PILL[status];
+
+      const li = document.createElement('li');
+      li.className = 'flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3';
+
+      const info = document.createElement('div');
+      info.innerHTML =
+        '<p class="text-sm font-bold">' + escapeHtml(name) + '</p>' +
+        '<span class="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded-full ' + cls + '">' + label + '</span>';
+
+      const btn = document.createElement('button');
+      if (status === 'idle' || status === 'failed') {
+        btn.className = 'text-xs font-bold bg-indigo-600 text-white rounded-lg px-3 py-1.5';
+        btn.textContent = status === 'failed' ? '再接続' : '接続';
+        btn.addEventListener('click', () => connectToPeer(id));
+      } else if (status === 'connecting') {
+        btn.className = 'text-xs font-bold border border-slate-300 rounded-lg px-3 py-1.5 text-slate-500';
+        btn.textContent = 'キャンセル';
+        btn.addEventListener('click', () => disconnectPeer(id, 'idle'));
+      } else {
+        btn.className = 'text-xs font-bold border border-slate-300 rounded-lg px-3 py-1.5 text-slate-500';
+        btn.textContent = '切断';
+        btn.addEventListener('click', () => disconnectPeer(id, 'idle'));
+      }
+
+      li.appendChild(info);
+      li.appendChild(btn);
+      peerListEl.appendChild(li);
+    }
+  }
+
+  function setPeerStatus(id, status) {
+    peerStatus.set(id, status);
+    renderPeers();
+    updateShareAvailability();
+  }
+
+  function sendSignal(message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }
+
+  function createPeerConnection(peerId) {
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    const entry = { pc, dc: null, pendingCandidates: [] };
+    connections.set(peerId, entry);
+
+    pc.addEventListener('icecandidate', (ev) => {
+      if (ev.candidate) {
+        // ev.candidateはブラウザ実装によってプロパティがprototypeのgetterの場合があり、
+        // そのままJSON.stringifyすると{}になってしまうことがある（WebKit系で確認）。
+        // 明示的にプレーンオブジェクトへ詰め替えて送る。
+        const c = ev.candidate;
+        sendSignal({
+          type: 'ice-candidate',
+          to: peerId,
+          payload: {
+            candidate: c.candidate,
+            sdpMid: c.sdpMid,
+            sdpMLineIndex: c.sdpMLineIndex,
+            usernameFragment: c.usernameFragment,
+          },
+        });
+      }
+    });
+
+    pc.addEventListener('connectionstatechange', () => {
+      const name = peers.get(peerId) || '端末';
+      log('P2P', name + ' との接続状態: ' + pc.connectionState);
+      if (pc.connectionState === 'failed') {
+        setPeerStatus(peerId, 'failed');
+      } else if (pc.connectionState === 'closed') {
+        setPeerStatus(peerId, 'idle');
+      }
+    });
+
+    return entry;
+  }
+
+  function setupDataChannel(dc, peerId) {
+    dc.binaryType = 'arraybuffer';
+    const entry = connections.get(peerId);
+    if (entry) entry.dc = dc;
+    const name = peers.get(peerId) || '端末';
+
+    dc.addEventListener('open', () => {
+      setPeerStatus(peerId, 'connected');
+      log('P2P', name + ' とDataChannelが確立しました');
+      dc.send(JSON.stringify({ kind: 'hello', name: nameInput.value.trim() }));
+    });
+
+    dc.addEventListener('message', (ev) => {
+      if (typeof ev.data !== 'string') {
+        handleFileChunk(peerId, ev.data);
+        return;
+      }
+      let msg;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch (e) {
+        log('P2P', name + ' から不明なメッセージを受信しました');
+        return;
+      }
+      switch (msg.kind) {
+        case 'hello':
+          log('P2P', name + ' からハンドシェイクを受信しました（相手の表示名: ' + msg.name + '）');
+          break;
+        case 'text':
+          handleReceivedText(peerId, msg);
+          break;
+        case 'file-meta':
+          handleFileMeta(peerId, msg);
+          break;
+        case 'file-end':
+          handleFileEnd(peerId, msg);
+          break;
+      }
+    });
+
+    dc.addEventListener('close', () => {
+      log('P2P', name + ' とのDataChannelが閉じられました');
+      if (peerStatus.get(peerId) !== 'idle') setPeerStatus(peerId, 'idle');
+    });
+  }
+
+  async function connectToPeer(peerId) {
+    const name = peers.get(peerId) || '端末';
+    setPeerStatus(peerId, 'connecting');
+    log('P2P', name + ' への接続を開始します');
+    try {
+      const entry = createPeerConnection(peerId);
+      const dc = entry.pc.createDataChannel('websend');
+      setupDataChannel(dc, peerId);
+      const offer = await entry.pc.createOffer();
+      await entry.pc.setLocalDescription(offer);
+      // sdp/typeがprototypeのgetterな実装対策でプレーンオブジェクトに詰め替える
+      sendSignal({ type: 'offer', to: peerId, payload: { type: offer.type, sdp: offer.sdp } });
+    } catch (e) {
+      log('P2P', name + ' への接続開始に失敗しました: ' + (e.name || 'Error') + ': ' + e.message);
+      setPeerStatus(peerId, 'failed');
+    }
+  }
+
+  async function handleOffer(msg) {
+    const peerId = msg.from;
+    const name = peers.get(peerId) || '端末';
+    setPeerStatus(peerId, 'connecting');
+    log('P2P', name + ' から接続要求を受信しました');
+    try {
+      const entry = createPeerConnection(peerId);
+      entry.pc.addEventListener('datachannel', (ev) => setupDataChannel(ev.channel, peerId));
+      await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      await flushPendingCandidates(peerId);
+      const answer = await entry.pc.createAnswer();
+      await entry.pc.setLocalDescription(answer);
+      sendSignal({ type: 'answer', to: peerId, payload: { type: answer.type, sdp: answer.sdp } });
+    } catch (e) {
+      log('P2P', name + ' からの接続要求の処理に失敗しました: ' + (e.name || 'Error') + ': ' + e.message);
+      setPeerStatus(peerId, 'failed');
+    }
+  }
+
+  async function handleAnswer(msg) {
+    const peerId = msg.from;
+    const entry = connections.get(peerId);
+    if (!entry) return;
+    const name = peers.get(peerId) || '端末';
+    try {
+      await entry.pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+      await flushPendingCandidates(peerId);
+    } catch (e) {
+      log('P2P', name + ' のanswer処理に失敗しました: ' + (e.name || 'Error') + ': ' + e.message);
+    }
+  }
+
+  async function flushPendingCandidates(peerId) {
+    const entry = connections.get(peerId);
+    if (!entry) return;
+    const queued = entry.pendingCandidates.splice(0);
+    for (const c of queued) {
+      try { await entry.pc.addIceCandidate(c); } catch (e) { /* 無視: 古いcandidateなど */ }
+    }
+  }
+
+  async function handleIceCandidate(msg) {
+    const peerId = msg.from;
+    const entry = connections.get(peerId);
+    if (!entry) return;
+    const name = peers.get(peerId) || '端末';
+    if (!msg.payload || !msg.payload.candidate) return; // 空のcandidateは無視
+    const candidate = new RTCIceCandidate(msg.payload);
+    if (entry.pc.remoteDescription) {
+      try { await entry.pc.addIceCandidate(candidate); } catch (e) { log('P2P', name + ' のICE候補追加に失敗: ' + e.message); }
+    } else {
+      entry.pendingCandidates.push(candidate);
+    }
+  }
+
+  function disconnectPeer(peerId, nextStatus) {
+    const entry = connections.get(peerId);
+    if (entry) {
+      if (entry.dc) entry.dc.close();
+      entry.pc.close();
+      connections.delete(peerId);
+    }
+    const recv = receivingFiles.get(peerId);
+    if (recv) {
+      updateTransferRow(recv.rowId, null, '失敗: 相手が切断しました', 'red');
+      receivingFiles.delete(peerId);
+    }
+    setPeerStatus(peerId, nextStatus);
+  }
+
+  // ---- 転送進捗行（送信・受信共通のUI） ----
+  function createTransferRow(rowId, name, sizeLabel) {
+    const row = document.createElement('div');
+    row.innerHTML =
+      '<div class="flex items-center justify-between text-sm">' +
+        '<span class="font-bold">' + escapeHtml(name) + '</span>' +
+        '<span class="text-slate-400 text-xs">' + escapeHtml(sizeLabel) + '</span>' +
+      '</div>' +
+      '<div class="mt-1.5 h-2.5 rounded-full bg-slate-200 overflow-hidden">' +
+        '<div class="h-full bg-indigo-600 rounded-full" style="width:0%"></div>' +
+      '</div>' +
+      '<p class="text-xs text-slate-400 mt-1"></p>';
+    transferListEl.prepend(row);
+    const entry = {
+      rowEl: row,
+      barEl: row.querySelector('.bg-indigo-600'),
+      labelEl: row.querySelector('p'),
+    };
+    transferRows.set(rowId, entry);
+    return entry;
+  }
+
+  const BAR_COLOR = { indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', red: 'bg-red-600' };
+
+  function updateTransferRow(rowId, progress, label, color) {
+    const entry = transferRows.get(rowId);
+    if (!entry) return;
+    if (progress !== null) {
+      entry.barEl.style.width = Math.round(progress * 100) + '%';
+    }
+    entry.barEl.className = 'h-full rounded-full ' + (BAR_COLOR[color] || BAR_COLOR.indigo);
+    entry.labelEl.textContent = label;
+  }
+
+  // ---- テキスト共有 ----
+  function addTextCard(name, text, ts, isSelf) {
+    const card = document.createElement('div');
+    card.className = isSelf
+      ? 'bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2'
+      : 'bg-slate-50 border border-slate-200 rounded-lg px-3 py-2';
+    const time = new Date(ts || Date.now()).toLocaleTimeString('ja-JP', { hour12: false });
+    const badge = isSelf
+      ? '<span class="text-[10px] font-bold text-indigo-600 bg-indigo-100 rounded-full px-1.5 py-0.5">送信済み</span> '
+      : '';
+    card.innerHTML =
+      '<div class="flex items-center justify-between gap-2">' +
+        '<span class="text-xs font-bold text-slate-500">' + badge + escapeHtml(name) + ' ・ ' + time + '</span>' +
+        '<button class="text-xs font-bold text-indigo-600">コピー</button>' +
+      '</div>' +
+      '<p class="text-sm mt-1 whitespace-pre-wrap break-words"></p>';
+    card.querySelector('p').textContent = text;
+    card.querySelector('button').addEventListener('click', () => {
+      navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {});
+    });
+    receivedTextListEl.prepend(card);
+  }
+
+  function handleReceivedText(peerId, msg) {
+    const name = peers.get(peerId) || msg.name || '端末';
+    addTextCard(name, msg.text, msg.ts, false);
+    log('TEXT', name + ' からテキストを受信しました: "' + truncate(msg.text, 40) + '"');
+  }
+
+  function sendText() {
+    const text = textInput.value;
+    if (!text.trim()) return;
+    const targets = connectedPeerIds();
+    if (targets.length === 0) {
+      log('TEXT', '接続済みの端末がありません');
+      return;
+    }
+    const ts = Date.now();
+    const payload = JSON.stringify({ kind: 'text', name: nameInput.value.trim(), text, ts });
+    let sentCount = 0;
+    for (const peerId of targets) {
+      const entry = connections.get(peerId);
+      if (entry && entry.dc && entry.dc.readyState === 'open') {
+        entry.dc.send(payload);
+        sentCount++;
+      }
+    }
+    addTextCard('自分', text, ts, true);
+    log('TEXT', sentCount + '台にテキストを送信しました');
+    textInput.value = '';
+  }
+
+  // ---- ファイル共有 ----
+  function waitForBufferedLow(dc) {
+    return new Promise((resolve) => {
+      dc.bufferedAmountLowThreshold = 1 * 1024 * 1024;
+      const handler = () => {
+        dc.removeEventListener('bufferedamountlow', handler);
+        resolve();
+      };
+      dc.addEventListener('bufferedamountlow', handler);
+    });
+  }
+
+  async function sendFileToPeer(entry, file, fileId, onProgress) {
+    const dc = entry.dc;
+    dc.send(JSON.stringify({
+      kind: 'file-meta', fileId, name: file.name, size: file.size, mime: file.type,
+    }));
+    let offset = 0;
+    while (offset < file.size) {
+      if (dc.bufferedAmount > BUFFERED_AMOUNT_HIGH) {
+        await waitForBufferedLow(dc);
+      }
+      const slice = file.slice(offset, offset + CHUNK_SIZE);
+      const buf = await slice.arrayBuffer();
+      dc.send(buf);
+      offset += buf.byteLength;
+      onProgress(offset / file.size);
+    }
+    dc.send(JSON.stringify({ kind: 'file-end', fileId }));
+  }
+
+  async function broadcastFile(file) {
+    const targets = connectedPeerIds();
+    if (targets.length === 0) {
+      log('FILE', '接続済みの端末がありません');
+      return;
+    }
+    const fileId = genId();
+    const rowId = 'send-' + fileId;
+    createTransferRow(rowId, file.name, formatSize(file.size));
+    log('FILE', file.name + ' の送信を開始します (' + formatSize(file.size) + ', 送信先' + targets.length + '台)');
+
+    const progressPerPeer = new Map(targets.map((id) => [id, 0]));
+    const updateAggregate = () => {
+      const min = Math.min(...progressPerPeer.values());
+      updateTransferRow(rowId, min, '送信中… ' + Math.round(min * 100) + '%', 'indigo');
+    };
+
+    try {
+      await Promise.all(targets.map(async (peerId) => {
+        const entry = connections.get(peerId);
+        if (!entry || !entry.dc || entry.dc.readyState !== 'open') return;
+        await sendFileToPeer(entry, file, fileId, (p) => {
+          progressPerPeer.set(peerId, p);
+          updateAggregate();
+        });
+      }));
+      updateTransferRow(rowId, 1, '完了 ✓ ' + formatSize(file.size), 'emerald');
+      log('FILE', file.name + ' の送信が完了しました');
+    } catch (e) {
+      updateTransferRow(rowId, null, '失敗: ' + e.message, 'red');
+      log('FILE', file.name + ' の送信に失敗しました: ' + e.message);
+    }
+  }
+
+  function handleFiles(fileList) {
+    for (const file of Array.from(fileList)) {
+      broadcastFile(file);
+    }
+  }
+
+  function handleFileMeta(peerId, msg) {
+    const rowId = 'recv-' + msg.fileId;
+    receivingFiles.set(peerId, {
+      fileId: msg.fileId, name: msg.name, size: msg.size,
+      mime: msg.mime || 'application/octet-stream', chunks: [], received: 0, rowId,
+    });
+    createTransferRow(rowId, msg.name, formatSize(msg.size));
+    const name = peers.get(peerId) || '端末';
+    log('FILE', name + ' から ' + msg.name + ' (' + formatSize(msg.size) + ') の受信を開始します');
+  }
+
+  function handleFileChunk(peerId, data) {
+    const st = receivingFiles.get(peerId);
+    if (!st) return;
+    st.chunks.push(data);
+    st.received += data.byteLength;
+    const progress = st.size ? st.received / st.size : 0;
+    updateTransferRow(st.rowId, progress, '受信中… ' + Math.round(progress * 100) + '%', 'indigo');
+  }
+
+  function handleFileEnd(peerId, msg) {
+    const st = receivingFiles.get(peerId);
+    if (!st || st.fileId !== msg.fileId) return;
+    const blob = new Blob(st.chunks, { type: st.mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = st.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    updateTransferRow(st.rowId, 1, '完了 ✓ ' + formatSize(st.received), 'emerald');
+    const name = peers.get(peerId) || '端末';
+    log('FILE', name + ' から ' + st.name + ' の受信が完了しました');
+    receivingFiles.delete(peerId);
+  }
+
+  function setJoinedUi(isJoined) {
+    joined = isJoined;
+    nameInput.disabled = isJoined;
+    roomInput.disabled = isJoined;
+    joinBtn.textContent = isJoined ? '退出' : 'ルームに参加';
+  }
+
+  function handleMessage(msg, room) {
+    switch (msg.type) {
+      case 'joined':
+        selfId = msg.selfId;
+        setWsStatus('connected');
+        joinBtn.disabled = false;
+        setJoinedUi(true);
+        peers.clear();
+        peerStatus.clear();
+        for (const p of msg.peers) { peers.set(p.id, p.name); peerStatus.set(p.id, 'idle'); }
+        renderPeers();
+        log('SIGNALING', 'ルーム "' + room + '" に参加しました（自分含め' + (peers.size + 1) + '端末）');
+        break;
+      case 'peer-joined':
+        peers.set(msg.id, msg.name);
+        peerStatus.set(msg.id, 'idle');
+        renderPeers();
+        log('SIGNALING', msg.name + ' がルームに参加しました');
+        break;
+      case 'peer-left': {
+        const name = peers.get(msg.id);
+        disconnectPeer(msg.id, 'idle');
+        peers.delete(msg.id);
+        peerStatus.delete(msg.id);
+        renderPeers();
+        log('SIGNALING', (name || '端末') + ' がルームから退出しました');
+        break;
+      }
+      case 'offer':
+        handleOffer(msg);
+        break;
+      case 'answer':
+        handleAnswer(msg);
+        break;
+      case 'ice-candidate':
+        handleIceCandidate(msg);
+        break;
+    }
+  }
+
+  function joinRoom(room, name) {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + window.location.host + '/ws/' + encodeURIComponent(room));
+    setWsStatus('connecting');
+    joinBtn.disabled = true;
+
+    ws.addEventListener('open', () => {
+      ws.send(JSON.stringify({ type: 'join', name }));
+    });
+
+    ws.addEventListener('message', (ev) => {
+      handleMessage(JSON.parse(ev.data), room);
+    });
+
+    ws.addEventListener('close', () => {
+      setWsStatus('disconnected');
+      joinBtn.disabled = false;
+      if (joined) log('SIGNALING', 'シグナリングサーバーとの接続が切断されました');
+      for (const id of Array.from(connections.keys())) disconnectPeer(id, 'idle');
+      peers.clear();
+      peerStatus.clear();
+      renderPeers();
+      setJoinedUi(false);
+      ws = null;
+    });
+
+    ws.addEventListener('error', () => {
+      log('SIGNALING', 'WebSocket接続でエラーが発生しました');
+    });
+  }
+
+  joinBtn.addEventListener('click', () => {
+    if (joined) {
+      ws && ws.close();
+      return;
+    }
+    const name = nameInput.value.trim();
+    const room = roomInput.value.trim();
+    if (!name || !room) {
+      log('SIGNALING', '名前とルームコードを入力してください');
+      return;
+    }
+    localStorage.setItem('websend_name', name);
+    localStorage.setItem('websend_room', room);
+    joinRoom(room, name);
+  });
+
+  textSendBtn.addEventListener('click', sendText);
+  textInput.addEventListener('keydown', (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') sendText();
+  });
+
+  dropzoneEl.addEventListener('click', () => fileInputEl.click());
+  fileInputEl.addEventListener('change', (ev) => {
+    handleFiles(ev.target.files);
+    fileInputEl.value = '';
+  });
+  dropzoneEl.addEventListener('dragover', (ev) => {
+    ev.preventDefault();
+    dropzoneEl.classList.add('ring-4', 'ring-indigo-300');
+  });
+  dropzoneEl.addEventListener('dragleave', () => {
+    dropzoneEl.classList.remove('ring-4', 'ring-indigo-300');
+  });
+  dropzoneEl.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    dropzoneEl.classList.remove('ring-4', 'ring-indigo-300');
+    handleFiles(ev.dataTransfer.files);
+  });
+
+  const logDumpBtn = document.getElementById('log-dump-btn');
+  const logTextEl = document.getElementById('log-text');
+  logDumpBtn.addEventListener('click', () => {
+    const isHidden = logTextEl.hidden;
+    if (isHidden) {
+      logTextEl.value = logLines.join('\n');
+      logTextEl.hidden = false;
+      logTextEl.focus();
+      logTextEl.select();
+      logDumpBtn.textContent = '閉じる';
+    } else {
+      logTextEl.hidden = true;
+      logDumpBtn.textContent = '全文をテキスト表示（コピー用）';
+    }
+  });
+
+  setWsStatus('disconnected');
+  renderPeers();
+  updateShareAvailability();
+
+  // 診断用: このブラウザのWebRTC対応状況を起動時にログへ出しておく（devtoolsが無い環境向け）
+  log('P2P', 'ブラウザ: ' + navigator.userAgent);
+  log('P2P', 'RTCPeerConnection: ' + (typeof RTCPeerConnection !== 'undefined'));
+  if (typeof RTCPeerConnection !== 'undefined') {
+    try {
+      const testPc = new RTCPeerConnection(RTC_CONFIG);
+      log('P2P', 'createDataChannel: ' + (typeof testPc.createDataChannel === 'function'));
+      testPc.close();
+    } catch (e) {
+      log('P2P', 'RTCPeerConnection生成テストに失敗: ' + (e.name || 'Error') + ': ' + e.message);
+    }
+  }
+})();
+</script>
+</body>
+</html>
