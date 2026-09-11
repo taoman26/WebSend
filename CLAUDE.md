@@ -8,7 +8,7 @@ LAN内（同一Wi-Fi）に閉じたP2Pファイル・テキスト共有ボード
   - **既知の制約: Haiku OS標準ブラウザのWebPositiveは`RTCPeerConnection`自体が未実装（実機で確認: `typeof RTCPeerConnection === 'undefined'`）。ポリフィル不可能なプラットフォーム制約のため、Haiku OSでは代わりにFirefoxを使うこと（実機でP2P接続・テキスト送信・ファイル送信とも動作確認済み）。** ハッカソン会場でHaiku端末を使う場合は事前にFirefoxを用意してもらう。
 - サーバーはWebRTCの「シグナリング（接続情報の仲介）」のみを行い、ファイル・テキストの実データはサーバーを経由しない。
 - サーバー側にデータベースやファイル保存を一切行わない（完全ステートレス、メモリ上の接続情報のみ）。
-- 外部CDN依存は最小限（Tailwind CDNのみ許可）。ビルドツール（npm/webpack等）は使わない。
+- 外部CDNには一切依存しない（ハッカソン会場はインターネットが無い前提）。Tailwindはインターネット経由のCDN `<script src="https://cdn.tailwindcss.com">` ではなく、`static/vendor/tailwind.js` にベンダリングしたPlay CDNスクリプトをサーバーから配信する（`server.py`で`/static`をマウント）。ビルドツール（npm/webpack等）は使わない。
 
 ## 技術スタック
 
@@ -23,7 +23,7 @@ LAN内（同一Wi-Fi）に閉じたP2Pファイル・テキスト共有ボード
 
 ### フロントエンド: ビルド不要の単一HTMLファイル
 
-- `index.html` 1ファイルに HTML + Vanilla JS + Tailwind CSS (CDN `<script>`) を同梱。
+- `index.html` 1ファイルに HTML + Vanilla JS を同梱。Tailwind CSSはローカルにベンダリングした`static/vendor/tailwind.js`を`<script src="/static/vendor/tailwind.js">`で読み込む（インターネット不要）。
 - フレームワーク（React/Vue等）不使用、npm/bundler不使用 — Haiku OS標準ブラウザ（WebPositive）は最新JS機能やビルドツールの実行環境を持たないため。
 - Vanilla JSはES2017程度の互換性を目安にする（WebPositiveの実装状況に合わせて動作確認しながら調整）。
 

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from stun_server import start_stun_server
 
@@ -17,6 +18,9 @@ app = FastAPI()
 
 STATIC_DIR = Path(__file__).parent / "static"
 STUN_PORT = 3478
+
+# Tailwind等のベンダーJSをCDNなしで配信する（ハッカソン会場はインターネットが無い前提）
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # room名 -> {client_id: {"ws": WebSocket, "name": str}}
 rooms: dict[str, dict[str, dict]] = {}
