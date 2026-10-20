@@ -605,9 +605,11 @@
     }
   }
 
+  // 受信側は端末ごとに1ファイルしか状態を持たないため、送信は1ファイルずつ直列に行う
+  let sendQueue = Promise.resolve();
   function handleFiles(fileList) {
     for (const file of Array.from(fileList)) {
-      broadcastFile(file);
+      sendQueue = sendQueue.then(() => broadcastFile(file));
     }
   }
 
